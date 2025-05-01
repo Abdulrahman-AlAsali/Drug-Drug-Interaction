@@ -1,0 +1,43 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.so
+
+# Virtual environments
+.venv/
+env/
+venv/
+ENV/
+*.env
+
+# Jupyter Notebook checkpoints
+.ipynb_checkpoints/
+
+# VS Code settings
+.vscode/
+
+# OS Files
+.DS_Store
+Thumbs.db
+
+# Temporary folders/files
+temp/
+*.tmp
+*.log
+
+# Data files
+*.pkl
+*.csv
+
+# Model artifacts
+*.h5
+*.joblib
+*.pkl
+*.model
+
+# Environment metadata
+*.egg-info/
+pip-log.txt
+pip-delete-this-directory.txt
