@@ -1,9 +1,12 @@
 import os
 import pandas as pd
 import time
-from sklearn.ensemble import RandomForestClassifier
-from sklearn.model_selection import GridSearchCV, train_test_split
-from sklearn.metrics import brier_score_loss
+from xgboost import XGBClassifier
+from sklearn.model_selection import RandomizedSearchCV, train_test_split
+from sklearn.calibration import CalibratedClassifierCV
+from sklearn.metrics import brier_score_loss, confusion_matrix, ConfusionMatrixDisplay
+import matplotlib.pyplot as plt
+import numpy as np
 
 # --------------------------------------
 # Configuration
@@ -89,24 +92,42 @@ merged.dropna(inplace=True)
 X = merged.drop(columns=["interaction_value", "first_drug_id", "second_drug_id"])
 y = merged["interaction_value"]
 
-X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
+X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.5, random_state=42)
 
-params = {
-    "n_estimators": [50, 100, 200, 300],
-    "max_depth": [5, 10, None],
-    "min_samples_leaf": [1, 2, 5],
-    "max_features": ['sqrt', 'log2', None]
+param_dist = {
+    "n_estimators": [100, 200, 300],
+    "max_depth": [3, 5, 10],
+    "learning_rate": [0.01, 0.05, 0.1, 0.2],
+    "subsample": [0.6, 0.8, 1.0],
+    "colsample_bytree": [0.6, 0.8, 1.0]
 }
 
-model = RandomForestClassifier(random_state=42)
-grid = GridSearchCV(model, param_grid=params, scoring="accuracy", cv=3)
+model = XGBClassifier(use_label_encoder=False, eval_metric='logloss', random_state=42)
+search = RandomizedSearchCV(
+    model, 
+    param_distributions=param_dist, 
+    n_iter=20,
+    scoring="accuracy", 
+    cv=3, 
+    verbose=1, 
+    random_state=42,
+    n_jobs=-1
+)
 
 start = time.time()
-grid.fit(X_train, y_train)
+search.fit(X_train, y_train)
 end = time.time()
 
-best_model = grid.best_estimator_
-acc = best_model.score(X_test, y_test)
+best_model = search.best_estimator_
+
+# Calibrate the model
+calibrated = CalibratedClassifierCV(best_model, method='sigmoid', cv=3)
+calibrated.fit(X_train, y_train)
+y_prob_cal = calibrated.predict_proba(X_test)[:, 1]
+brier = brier_score_loss(y_test, y_prob_cal)
+
+
+acc = calibrated.score(X_test, y_test)
 # Get predicted probabilities for the positive class (label 1)
 y_prob = best_model.predict_proba(X_test)[:, 1]
 
@@ -114,7 +135,7 @@ y_prob = best_model.predict_proba(X_test)[:, 1]
 brier = brier_score_loss(y_test, y_prob)
 
 print(f"Brier score on test set: {brier:.4f}")
-print(f"Best parameters: {grid.best_params_}")
+print(f"Best parameters: {search.best_params_}")
 print(f"Accuracy on test set: {acc:.4f}")
 print(f"Training time: {end - start:.2f} seconds")
 
@@ -126,3 +147,37 @@ importance_dict = dict(zip(feature_names, feature_importance))
 print("Top features:")
 for k, v in sorted(importance_dict.items(), key=lambda x: -x[1])[:10]:
     print(f"{k}: {v:.4f}")
+
+
+# ---------------------------
+# Visualizations
+# ---------------------------
+
+# 1. Feature Importance Plot
+sorted_idx = np.argsort(feature_importance)[::-1]
+length = len(sorted_idx)
+plt.figure(figsize=(length, 6))
+plt.bar(range(length), feature_importance[sorted_idx], align='center')
+plt.xticks(range(length), np.array(feature_names)[sorted_idx], rotation=45, ha='right')
+plt.title("Top Feature Importances")
+plt.tight_layout()
+plt.show()
+
+# 2. Histogram of Predicted Probabilities
+plt.figure(figsize=(8, 5))
+plt.hist(y_prob, bins=20, edgecolor='k')
+plt.xlabel("Predicted Probability for the interaction class")
+plt.ylabel("Frequency")
+plt.title("Distribution of Predicted Probabilities")
+plt.grid(True)
+plt.tight_layout()
+plt.show()
+
+# 3. Confusion Matrix
+y_pred = best_model.predict(X_test)
+cm = confusion_matrix(y_test, y_pred)
+disp = ConfusionMatrixDisplay(confusion_matrix=cm)
+disp.plot(cmap='Blues')
+plt.title("Confusion Matrix")
+plt.tight_layout()
+plt.show()
