@@ -90,6 +90,7 @@ merged.dropna(inplace=True)
 # --------------------------------------
 X = merged.drop(columns=["interaction_value", "first_drug_id", "second_drug_id"])
 y = merged["interaction_value"]
+y = y.replace(-1, 0)
 
 X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.5, random_state=42)
 
